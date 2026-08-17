@@ -18,6 +18,7 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '../firebase.js';
+import { DEMO_SEED } from './demoSeed.js';
 
 // Trilha base (Nível 0) que todo colaborador recebe ao se cadastrar.
 export const TRILHA_INICIAL_ID = 'iniciante_n0';
@@ -291,6 +292,24 @@ export async function excluirMentoria(id) {
   await deleteDoc(doc(db, 'mentorships', id));
 }
 
+// --- Candidatos (pipeline de nivelamento / recrutamento) ---
+export async function listarCandidatos() {
+  if (!isFirebaseConfigured) return demoAll('candidatos');
+  const snap = await getDocs(collection(db, 'candidatos'));
+  return snap.docs.map((d) => d.data());
+}
+
+export async function salvarCandidato(c) {
+  if (!isFirebaseConfigured) return demoSet('candidatos', c.id, c);
+  await setDoc(doc(db, 'candidatos', c.id), c, { merge: true });
+  return c;
+}
+
+export async function excluirCandidato(id) {
+  if (!isFirebaseConfigured) return demoDelete('candidatos', id);
+  await deleteDoc(doc(db, 'candidatos', id));
+}
+
 // =====================================================================
 // AUTOMAÇÃO DE MENTORIA (roda no cliente do próprio usuário)
 // =====================================================================
@@ -347,6 +366,29 @@ function demoLoad() {
     return JSON.parse(localStorage.getItem(DEMO_DB_KEY)) || {};
   } catch {
     return {};
+  }
+}
+
+/**
+ * Injeta o dataset fictício (demoSeed) na primeira execução em MODO DEMO,
+ * quando o store local ainda está vazio. Assim qualquer pessoa que abrir
+ * o site sem Firebase já vê todas as abas populadas. Se o usuário editar
+ * ou apagar dados, o store deixa de estar vazio e o seed não roda de novo.
+ */
+export function ensureDemoSeed() {
+  if (isFirebaseConfigured) return false;
+  const store = demoLoad();
+  const vazio = !store || Object.keys(store).length === 0;
+  if (!vazio) return false;
+  demoPersist(JSON.parse(JSON.stringify(DEMO_SEED)));
+  return true;
+}
+// Roda ao carregar o módulo (apenas no modo demo).
+if (!isFirebaseConfigured) {
+  try {
+    ensureDemoSeed();
+  } catch {
+    /* noop */
   }
 }
 function demoPersist(dbObj) {

@@ -98,3 +98,81 @@ body {
   outline: 2px solid #f59e0b;
   outline-offset: 2px;
 }
+
+/* ---------------------------------------------------------------
+   Conteúdo em Markdown das trilhas (.md-prose)
+   Tipografia legível sobre o tema escuro Zello.
+   --------------------------------------------------------------- */
+.md-prose {
+  color: #c7ccd6;
+  font-size: 0.95rem;
+  line-height: 1.7;
+  word-break: break-word;
+}
+.md-prose > :first-child { margin-top: 0; }
+.md-prose > :last-child { margin-bottom: 0; }
+.md-prose h1,
+.md-prose h2,
+.md-prose h3,
+.md-prose h4 {
+  color: #eef1f6;
+  font-weight: 800;
+  line-height: 1.25;
+  margin: 1.6em 0 0.6em;
+}
+.md-prose h1 { font-size: 1.5rem; }
+.md-prose h2 { font-size: 1.25rem; }
+.md-prose h3 { font-size: 1.1rem; }
+.md-prose h4 { font-size: 1rem; }
+.md-prose p { margin: 0.75em 0; }
+.md-prose a { color: #ff8a3d; text-decoration: underline; text-underline-offset: 2px; }
+.md-prose a:hover { color: #ff6b00; }
+.md-prose strong { color: #eef1f6; font-weight: 700; }
+.md-prose ul,
+.md-prose ol { margin: 0.75em 0; padding-left: 1.4em; }
+.md-prose ul { list-style: disc; }
+.md-prose ol { list-style: decimal; }
+.md-prose li { margin: 0.3em 0; }
+.md-prose li::marker { color: #ff8a3d; }
+.md-prose blockquote {
+  margin: 1em 0;
+  padding: 0.25em 1em;
+  border-left: 3px solid rgba(255, 107, 0, 0.5);
+  background: rgba(255, 255, 255, 0.03);
+  color: #aeb4c0;
+  border-radius: 0 8px 8px 0;
+}
+.md-prose code {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 0.15em 0.4em;
+  border-radius: 6px;
+  color: #ffd7b0;
+}
+.md-prose pre {
+  margin: 1em 0;
+  padding: 1em;
+  overflow-x: auto;
+  background: #0b0f19;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+}
+.md-prose pre code { background: transparent; padding: 0; color: #dfe4ee; }
+.md-prose img { max-width: 100%; border-radius: 12px; margin: 1em 0; }
+.md-prose hr { border: none; border-top: 1px solid rgba(255, 255, 255, 0.1); margin: 1.5em 0; }
+.md-prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1em 0;
+  font-size: 0.9em;
+  display: block;
+  overflow-x: auto;
+}
+.md-prose th,
+.md-prose td {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 0.5em 0.75em;
+  text-align: left;
+}
+.md-prose th { background: rgba(255, 255, 255, 0.05); color: #eef1f6; }

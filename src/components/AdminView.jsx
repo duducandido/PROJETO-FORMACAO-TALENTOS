@@ -17,6 +17,11 @@ import {
   Upload,
   Paperclip,
   ExternalLink,
+  FileText,
+  Scissors,
+  Eye,
+  EyeOff,
+  HelpCircle,
 } from 'lucide-react';
 import {
   listarTrilhas,
@@ -29,6 +34,8 @@ import {
   excluirMentoria,
 } from '../services/dbService.js';
 import { criarColaborador } from '../services/authService.js';
+import { splitMarkdownIntoModules, resumoModulos } from '../services/trilhaContent.js';
+import Markdown from './Markdown.jsx';
 import {
   uploadArquivo,
   categoriaDoArquivo,
@@ -340,6 +347,71 @@ function TrilhaEditor({ trilha, setTrilha, novo, salvando, onSalvar, onFechar, f
       return { ...t, modulos };
     });
 
+  // ---- Importação de 1 arquivo .md grande (auto-split em módulos) ----
+  const [mdBruto, setMdBruto] = useState('');
+  const [previewMi, setPreviewMi] = useState(null); // índice do módulo em preview
+
+  const onUploadMd = async (file) => {
+    if (!file) return;
+    try {
+      const txt = await file.text();
+      setMdBruto(txt);
+      flash?.('ok', `Arquivo "${file.name}" carregado. Revise e clique em "Dividir em módulos".`);
+    } catch (e) {
+      flash?.('erro', 'Não foi possível ler o arquivo: ' + e.message);
+    }
+  };
+
+  const importarMd = () => {
+    const mods = splitMarkdownIntoModules(mdBruto);
+    if (!mods.length) return flash?.('erro', 'Nada para importar — cole ou envie um .md com títulos.');
+    const temModulos = (trilha.modulos || []).length > 0;
+    if (temModulos && !confirm(`Isto vai SUBSTITUIR os ${trilha.modulos.length} módulo(s) atuais por ${mods.length} novo(s). Continuar?`)) {
+      return;
+    }
+    setTrilha((t) => ({ ...t, modulos: mods }));
+    flash?.('ok', `${mods.length} módulo(s) gerado(s) a partir do Markdown.`);
+  };
+
+  // ---- Edição de conteúdo Markdown e Quiz por módulo ----
+  const setModuloMd = (mi, valor) =>
+    setTrilha((t) => {
+      const modulos = [...t.modulos];
+      modulos[mi] = { ...modulos[mi], conteudoMd: valor };
+      return { ...t, modulos };
+    });
+  const mutarQuiz = (mi, fn) =>
+    setTrilha((t) => {
+      const modulos = [...t.modulos];
+      const quiz = fn([...(modulos[mi].quiz || [])]);
+      modulos[mi] = { ...modulos[mi], quiz };
+      return { ...t, modulos };
+    });
+  const addPergunta = (mi) =>
+    mutarQuiz(mi, (q) => [...q, { pergunta: '', opcoes: ['', ''], correta: 0 }]);
+  const rmPergunta = (mi, qi) => mutarQuiz(mi, (q) => q.filter((_, i) => i !== qi));
+  const setPergunta = (mi, qi, valor) =>
+    mutarQuiz(mi, (q) => q.map((p, i) => (i === qi ? { ...p, pergunta: valor } : p)));
+  const addOpcao = (mi, qi) =>
+    mutarQuiz(mi, (q) => q.map((p, i) => (i === qi ? { ...p, opcoes: [...p.opcoes, ''] } : p)));
+  const rmOpcao = (mi, qi, oi) =>
+    mutarQuiz(mi, (q) =>
+      q.map((p, i) => {
+        if (i !== qi) return p;
+        const opcoes = p.opcoes.filter((_, idx) => idx !== oi);
+        let correta = p.correta;
+        if (oi === correta) correta = 0;
+        else if (oi < correta) correta -= 1;
+        return { ...p, opcoes, correta };
+      }),
+    );
+  const setOpcao = (mi, qi, oi, valor) =>
+    mutarQuiz(mi, (q) =>
+      q.map((p, i) => (i === qi ? { ...p, opcoes: p.opcoes.map((o, idx) => (idx === oi ? valor : o)) } : p)),
+    );
+  const setCorreta = (mi, qi, oi) =>
+    mutarQuiz(mi, (q) => q.map((p, i) => (i === qi ? { ...p, correta: oi } : p)));
+
   return (
     <div className="fixed inset-0 z-50 grid place-items-start overflow-y-auto bg-black/70 p-4 backdrop-blur-sm">
       <div className="mx-auto my-8 w-full max-w-3xl rounded-2xl border border-white/10 bg-elevated p-6 shadow-xl">
@@ -388,6 +460,47 @@ function TrilhaEditor({ trilha, setTrilha, novo, salvando, onSalvar, onFechar, f
               value={trilha.descricao}
               onChange={(e) => set('descricao', e.target.value)}
             />
+          </div>
+        </div>
+
+        {/* Importar conteúdo de 1 arquivo .md grande (auto-split) */}
+        <div className="mt-5 rounded-xl border border-primary/25 bg-primary/5 p-4">
+          <div className="flex items-center gap-2">
+            <FileText size={16} className="text-primary" />
+            <h4 className="font-bold text-ice">Importar conteúdo de um .md</h4>
+          </div>
+          <p className="mt-1 text-xs text-silver">
+            Cole (ou envie) o passo a passo inteiro em Markdown. O site divide em módulos a cada título
+            (<code className="rounded bg-white/10 px-1">#</code> / <code className="rounded bg-white/10 px-1">##</code>).
+            Um bloco <code className="rounded bg-white/10 px-1">## Quiz</code> vira a avaliação do módulo.
+          </p>
+          <textarea
+            className={`${inputCls} mt-3 h-40 font-mono text-xs`}
+            value={mdBruto}
+            onChange={(e) => setMdBruto(e.target.value)}
+            placeholder={'# Título da trilha\n\n## Módulo 1 — Introdução\nSeu conteúdo em **markdown**...\n\n## Quiz\nP: Pergunta?\n- [x] Certa\n- [ ] Errada'}
+          />
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <button className={btnPrimary} onClick={importarMd} disabled={!mdBruto.trim()}>
+              <Scissors size={14} /> Dividir em módulos
+            </button>
+            <label className={`${btnGhost} cursor-pointer`}>
+              <Upload size={14} /> Enviar arquivo .md
+              <input
+                type="file"
+                accept=".md,.markdown,.txt,text/markdown,text/plain"
+                className="hidden"
+                onChange={(e) => {
+                  onUploadMd(e.target.files?.[0]);
+                  e.target.value = '';
+                }}
+              />
+            </label>
+            {mdBruto.trim() && (
+              <span className="text-xs text-silver">
+                {splitMarkdownIntoModules(mdBruto).length} módulo(s) detectado(s)
+              </span>
+            )}
           </div>
         </div>
 
@@ -526,6 +639,112 @@ function TrilhaEditor({ trilha, setTrilha, novo, salvando, onSalvar, onFechar, f
                 >
                   <Plus size={12} /> Adicionar conteúdo
                 </button>
+              </div>
+
+              {/* Conteúdo em Markdown do módulo */}
+              <div className="mt-3 pl-6">
+                <div className="mb-1 flex items-center justify-between">
+                  <label className="text-xs font-semibold text-silver">Conteúdo (Markdown)</label>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-silver hover:text-primary"
+                    onClick={() => setPreviewMi(previewMi === mi ? null : mi)}
+                  >
+                    {previewMi === mi ? <EyeOff size={13} /> : <Eye size={13} />}
+                    {previewMi === mi ? 'Editar' : 'Preview'}
+                  </button>
+                </div>
+                {previewMi === mi ? (
+                  <div className="rounded-lg border border-white/10 bg-deep/40 p-3">
+                    {m.conteudoMd ? <Markdown>{m.conteudoMd}</Markdown> : <p className="text-xs text-silver">Sem conteúdo.</p>}
+                  </div>
+                ) : (
+                  <textarea
+                    className={`${inputCls} h-32 font-mono text-xs`}
+                    value={m.conteudoMd || ''}
+                    onChange={(e) => setModuloMd(mi, e.target.value)}
+                    placeholder={'## Título\nEscreva o conteúdo em **markdown**...'}
+                  />
+                )}
+              </div>
+
+              {/* Quiz do módulo */}
+              <div className="mt-3 pl-6">
+                <div className="mb-2 flex items-center gap-2">
+                  <HelpCircle size={14} className="text-primary" />
+                  <label className="text-xs font-semibold text-silver">
+                    Quiz {(m.quiz || []).length > 0 ? `(${m.quiz.length})` : '— opcional'}
+                  </label>
+                </div>
+                <div className="space-y-3">
+                  {(m.quiz || []).map((q, qi) => (
+                    <div key={qi} className="rounded-lg border border-white/10 bg-deep/50 p-3">
+                      <div className="flex items-center gap-2">
+                        <input
+                          className={`${inputCls} flex-1`}
+                          value={q.pergunta}
+                          onChange={(e) => setPergunta(mi, qi, e.target.value)}
+                          placeholder={`Pergunta ${qi + 1}`}
+                        />
+                        <button
+                          className="rounded-lg border border-red-500/30 p-2 text-red-300 hover:bg-red-500/10"
+                          onClick={() => rmPergunta(mi, qi)}
+                          title="Remover pergunta"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                      <div className="mt-2 space-y-1.5">
+                        {q.opcoes.map((op, oi) => (
+                          <div key={oi} className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setCorreta(mi, qi, oi)}
+                              title="Marcar como correta"
+                              className={`grid h-5 w-5 shrink-0 place-items-center rounded-full border text-[10px] font-bold ${
+                                q.correta === oi
+                                  ? 'border-emerald-400 bg-emerald-500/20 text-emerald-300'
+                                  : 'border-white/20 text-silver hover:border-primary'
+                              }`}
+                            >
+                              {q.correta === oi ? '✓' : String.fromCharCode(65 + oi)}
+                            </button>
+                            <input
+                              className={`${inputCls} flex-1`}
+                              value={op}
+                              onChange={(e) => setOpcao(mi, qi, oi, e.target.value)}
+                              placeholder={`Alternativa ${String.fromCharCode(65 + oi)}`}
+                            />
+                            {q.opcoes.length > 2 && (
+                              <button
+                                className="rounded-lg p-1.5 text-silver hover:text-red-300"
+                                onClick={() => rmOpcao(mi, qi, oi)}
+                                title="Remover alternativa"
+                              >
+                                <X size={13} />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      <button
+                        className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
+                        onClick={() => addOpcao(mi, qi)}
+                      >
+                        <Plus size={12} /> Alternativa
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
+                    onClick={() => addPergunta(mi)}
+                  >
+                    <Plus size={12} /> Adicionar pergunta
+                  </button>
+                  <p className="text-[11px] text-silver/70">
+                    Clique na bolinha à esquerda para marcar a alternativa correta (✓).
+                  </p>
+                </div>
               </div>
             </div>
           ))}

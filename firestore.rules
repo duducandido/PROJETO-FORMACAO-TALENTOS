@@ -78,5 +78,11 @@ service cloud.firestore {
                 || request.resource.data.menteeId == request.auth.uid));
       allow delete: if isAdmin();
     }
+
+    // --- candidatos --- (recrutamento/nivelamento: só admin gerencia)
+    match /candidatos/{candidatoId} {
+      allow read, create, update: if isAdmin();
+      allow delete: if isAdmin();
+    }
   }
 }

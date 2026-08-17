@@ -10,6 +10,7 @@ import DevAccessBar from './components/DevAccessBar.jsx';
 import ApresentacaoView from './components/ApresentacaoView.jsx';
 import AdminView from './components/AdminView.jsx';
 import MinhaTrilhaView from './components/MinhaTrilhaView.jsx';
+import NivelamentoView from './components/NivelamentoView.jsx';
 import { observarAuth, sair, loginDemo } from './services/authService.js';
 import {
   observarPerfil,
@@ -70,8 +71,10 @@ const PERFIS = [
   { id: 'GESTOR', label: 'Equipe', sub: 'Visão geral', icon: Users },
 ];
 
-// Abas extras só para admin (a aba de gestão fica dentro de "Admin").
-const PERFIS_ADMIN = [];
+// Abas extras só para admin.
+const PERFIS_ADMIN = [
+  { id: 'NIVELAMENTO', label: 'Nivelamento', sub: 'Recrutamento', icon: ClipboardCheck },
+];
 
 // =====================================================================
 // COMPONENTES REUTILIZÁVEIS
@@ -1128,6 +1131,7 @@ export default function FormacaoDeTalentosApp() {
     INTRO: <ApresentacaoView onStart={() => setPerfil('MINHA')} nomeUsuario={usuario.nome} />,
     MINHA: <MinhaTrilhaView uid={authUser.uid} profile={profile} />,
     GESTOR: <ViewGestor />,
+    NIVELAMENTO: <NivelamentoView currentUid={authUser.uid} currentNome={usuario.nome} />,
     ADMIN: <AdminView currentUid={authUser.uid} />,
   };
 

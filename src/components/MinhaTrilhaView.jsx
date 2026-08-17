@@ -20,6 +20,10 @@ import {
   Trophy,
   ExternalLink,
   PlayCircle,
+  Lock,
+  Clock,
+  Paperclip,
+  Youtube,
 } from 'lucide-react';
 import {
   getTrack,
@@ -33,6 +37,9 @@ import {
   autoVincularAfilhado,
   reconciliarPromocaoMentor,
 } from '../services/dbService.js';
+import Markdown from './Markdown.jsx';
+import ModuloQuiz from './ModuloQuiz.jsx';
+import { estimarTempoLeitura, youtubeId } from '../services/trilhaContent.js';
 
 const NIVEL_LABEL = { 0: 'Nível 0', 1: 'Nível 1', 2: 'Nível 2', 3: 'Nível 3' };
 
@@ -82,6 +89,12 @@ function Estudante({ uid, profile, nivel }) {
           prog.filter((p) => p.trackId === trackId && p.completed).map((p) => p.moduleId),
         );
         setFeitos(concluidos);
+        // Abre automaticamente o módulo ativo (1º liberado e ainda não concluído).
+        const mods = (t?.modulos || []).slice().sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0));
+        const idxAtivo = mods.findIndex(
+          (m, i) => (i === 0 || concluidos.has(mods[i - 1].ordem)) && !concluidos.has(m.ordem),
+        );
+        setAberto(idxAtivo >= 0 ? mods[idxAtivo].ordem : null);
         if (nivel === 0) {
           const todas = await listarTrilhas();
           if (vivo) setTecnicas(todas.filter((x) => x.nivel === 1).sort((a, b) => a.ordem - b.ordem));
@@ -106,20 +119,20 @@ function Estudante({ uid, profile, nivel }) {
   const pct = total ? Math.round((feitosCount / total) * 100) : 0;
   const completou = total > 0 && feitosCount === total;
 
-  const toggle = async (m) => {
-    const novo = !feitos.has(m.ordem);
-    setFeitos((s) => {
-      const n = new Set(s);
-      novo ? n.add(m.ordem) : n.delete(m.ordem);
-      return n;
-    });
+  // Marca o módulo como concluído (uma via) e abre o próximo automaticamente.
+  const concluir = async (m) => {
+    if (feitos.has(m.ordem)) return;
+    setFeitos((s) => new Set(s).add(m.ordem));
+    const idx = modulos.findIndex((x) => x.ordem === m.ordem);
+    const proximo = modulos[idx + 1];
+    setAberto(proximo ? proximo.ordem : null);
     try {
-      await setModuleProgress({ userId: uid, trackId, moduleId: m.ordem, completed: novo });
+      await setModuleProgress({ userId: uid, trackId, moduleId: m.ordem, completed: true });
     } catch (e) {
       setMsg('Erro ao salvar progresso: ' + e.message);
       setFeitos((s) => {
         const n = new Set(s);
-        novo ? n.delete(m.ordem) : n.add(m.ordem);
+        n.delete(m.ordem);
         return n;
       });
     }
@@ -194,64 +207,155 @@ function Estudante({ uid, profile, nivel }) {
         </div>
       )}
 
-      {/* Módulos reais com marcação de conclusão */}
+      {/* Módulos: bloqueio sequencial (o próximo só abre após concluir o anterior) */}
       <div className="space-y-3">
-        {modulos.map((m) => {
+        {modulos.map((m, i) => {
           const feito = feitos.has(m.ordem);
-          const abertoAqui = aberto === m.ordem;
+          const liberado = i === 0 || feitos.has(modulos[i - 1].ordem);
+          const abertoAqui = aberto === m.ordem && liberado;
+          const temQuiz = (m.quiz || []).length > 0;
+          const temConteudo = Boolean(m.conteudoMd) || (m.conteudos || []).length > 0;
+          const minutos = m.conteudoMd ? estimarTempoLeitura(m.conteudoMd) : null;
+
           return (
             <div
               key={m.ordem}
               className={`overflow-hidden rounded-xl border transition-colors ${
-                feito ? 'border-accent/40 bg-deep/40' : 'border-line bg-elevated'
+                feito
+                  ? 'border-accent/40 bg-deep/40'
+                  : liberado
+                    ? 'border-primary/40 bg-elevated'
+                    : 'border-line bg-deep/30'
               }`}
             >
-              <div className="flex items-center gap-3 p-4">
-                <button
-                  onClick={() => toggle(m)}
-                  title={feito ? 'Marcar como não concluído' : 'Marcar como concluído'}
-                  className={feito ? 'text-accent' : 'text-silver hover:text-ice'}
+              <button
+                type="button"
+                disabled={!liberado}
+                onClick={() => setAberto(abertoAqui ? null : m.ordem)}
+                className={`flex w-full items-center gap-3 p-4 text-left ${
+                  liberado ? '' : 'cursor-not-allowed'
+                }`}
+              >
+                {/* Status: concluído / liberado / travado */}
+                <span className="shrink-0">
+                  {feito ? (
+                    <CheckCircle2 size={24} className="text-accent" />
+                  ) : liberado ? (
+                    <Circle size={24} className="text-primary" />
+                  ) : (
+                    <Lock size={22} className="text-silver/60" />
+                  )}
+                </span>
+                <span
+                  className={`grid h-8 w-8 shrink-0 place-items-center rounded-full border text-xs font-bold ${
+                    liberado ? 'border-line text-silver' : 'border-line/60 text-silver/50'
+                  }`}
                 >
-                  {feito ? <CheckCircle2 size={24} /> : <Circle size={24} />}
-                </button>
-                <button
-                  className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                  onClick={() => setAberto(abertoAqui ? null : m.ordem)}
-                >
-                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-line text-xs font-bold text-silver">
-                    {m.ordem}
-                  </span>
-                  <div className="min-w-0">
-                    <p className="truncate font-semibold text-ice">{m.titulo}</p>
-                    {m.descricao && <p className="truncate text-xs text-silver">{m.descricao}</p>}
-                  </div>
-                </button>
-                {(m.conteudos || []).length > 0 && (
+                  {m.ordem}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className={`truncate font-semibold ${liberado ? 'text-ice' : 'text-silver/60'}`}>
+                    {m.titulo}
+                  </p>
+                  {!liberado ? (
+                    <p className="truncate text-xs text-silver/60">
+                      🔒 Conclua o módulo anterior para desbloquear
+                    </p>
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-silver">
+                      {m.descricao && <span className="truncate">{m.descricao}</span>}
+                      {minutos && (
+                        <span className="inline-flex items-center gap-1">
+                          <Clock size={11} /> {minutos} min
+                        </span>
+                      )}
+                      {temQuiz && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                          quiz
+                        </span>
+                      )}
+                      {feito && <span className="text-accent">· concluído</span>}
+                    </div>
+                  )}
+                </div>
+                {liberado && (temConteudo || temQuiz) && (
                   <ChevronDown
                     size={18}
                     className={`shrink-0 text-silver transition-transform ${abertoAqui ? 'rotate-180 text-accent' : ''}`}
                   />
                 )}
-              </div>
-              {abertoAqui && (m.conteudos || []).length > 0 && (
-                <div className="animate-fade-up space-y-2 border-t border-line/60 px-4 py-3 pl-14">
-                  {m.conteudos.map((c, i) => (
-                    <div key={i} className="flex items-center gap-2 text-sm">
-                      <PlayCircle size={15} className="shrink-0 text-primary" />
-                      <span className="text-silver">{c.titulo || c.tipo}</span>
-                      {c.duracao && <span className="text-xs text-silver/60">· {c.duracao}</span>}
-                      {c.url && (
-                        <a
-                          href={c.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="ml-auto inline-flex items-center gap-1 text-xs text-accent hover:underline"
-                        >
-                          <ExternalLink size={12} /> abrir
-                        </a>
-                      )}
+              </button>
+
+              {abertoAqui && (
+                <div className="animate-fade-up border-t border-line/60 px-4 py-4 sm:px-6">
+                  {/* Conteúdo em Markdown */}
+                  {m.conteudoMd && <Markdown>{m.conteudoMd}</Markdown>}
+
+                  {/* Materiais e links do módulo (vídeos do YouTube ficam embutidos) */}
+                  {(m.conteudos || []).length > 0 && (
+                    <div className="mt-4 rounded-xl border border-white/10 bg-deep/40 p-4">
+                      <p className="mb-3 flex items-center gap-2 text-sm font-bold text-ice">
+                        <Paperclip size={15} className="text-primary" /> Materiais e links
+                      </p>
+                      <div className="space-y-3">
+                        {m.conteudos.map((c, ci) => {
+                          const yt = youtubeId(c.url);
+                          if (yt) {
+                            return (
+                              <div key={ci}>
+                                <div className="mb-1.5 flex items-center gap-2 text-xs font-semibold text-silver">
+                                  <Youtube size={14} className="text-red-400" />
+                                  {c.titulo || 'Vídeo'}
+                                  {c.duracao && <span className="text-silver/60">· {c.duracao}</span>}
+                                </div>
+                                <div className="relative w-full overflow-hidden rounded-lg border border-white/10" style={{ aspectRatio: '16 / 9' }}>
+                                  <iframe
+                                    className="absolute inset-0 h-full w-full"
+                                    src={`https://www.youtube-nocookie.com/embed/${yt}`}
+                                    title={c.titulo || 'Vídeo do YouTube'}
+                                    loading="lazy"
+                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                    allowFullScreen
+                                  />
+                                </div>
+                              </div>
+                            );
+                          }
+                          return (
+                            <a
+                              key={ci}
+                              href={c.url || undefined}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="flex items-center gap-2 rounded-lg border border-white/10 bg-elevated px-3 py-2 text-sm text-silver transition-colors hover:border-primary hover:text-ice"
+                            >
+                              <PlayCircle size={15} className="shrink-0 text-primary" />
+                              <span className="flex-1 truncate">{c.titulo || c.tipo || 'Material'}</span>
+                              {c.duracao && <span className="text-xs text-silver/60">{c.duracao}</span>}
+                              {c.url && <ExternalLink size={13} className="shrink-0 text-accent" />}
+                            </a>
+                          );
+                        })}
+                      </div>
                     </div>
-                  ))}
+                  )}
+
+                  {/* Conclusão: quiz obrigatório OU botão de concluir */}
+                  {temQuiz ? (
+                    <ModuloQuiz quiz={m.quiz} jaConcluido={feito} onAprovado={() => concluir(m)} />
+                  ) : feito ? (
+                    <div className="mt-4 flex items-center gap-2 text-sm font-semibold text-accent">
+                      <CheckCircle2 size={16} /> Módulo concluído.
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => concluir(m)}
+                      className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-glow transition-all hover:bg-primary-hover"
+                    >
+                      <CheckCircle2 size={16} /> Concluí este módulo
+                    </button>
+                  )}
                 </div>
               )}
             </div>
